@@ -31,8 +31,6 @@
   .brand-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 14px 0 6px; opacity: 0.9; }
   .brand-row .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
   .brand-row span { font-size: 13px; letter-spacing: 0.4px; color: var(--muted); }
-
-  /* البطاقة */
   .card-stage { perspective: 1200px; margin: 18px 0 26px; }
   .card {
     position: relative; height: 210px; border-radius: 20px; cursor: pointer;
@@ -68,22 +66,16 @@
   .barcode-lines { display: flex; gap: 2px; height: 46px; align-items: stretch; }
   .barcode-lines div { width: 3px; background: #E5EAF0; border-radius: 1px; }
   .card-back-num { font-size: 15px; letter-spacing: 3px; color: var(--muted); margin-top: 10px; direction: ltr; }
-
-  /* شريط التقدم */
   .progress-card { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px 20px; margin-bottom: 14px; }
   .progress-top { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
   .progress-top .label { font-size: 13px; color: var(--muted); }
   .progress-top .value { font-size: 13px; color: var(--gold); font-weight: 600; }
   .progress-track { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.06); overflow: hidden; }
   .progress-fill { height: 100%; border-radius: 4px; background: linear-gradient(90deg, var(--steel-light), var(--gold)); transition: width 0.8s ease; }
-
-  /* إحصائيات */
   .stats-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 14px; }
   .stat-box { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 14px 10px; text-align: center; }
   .stat-box .num { font-size: 18px; font-weight: 700; }
   .stat-box .label { font-size: 11px; color: var(--muted); margin-top: 4px; }
-
-  /* سجل الفواتير */
   .section-title { font-size: 15px; font-weight: 700; margin: 22px 0 10px; padding-inline-start: 2px; }
   .invoice-row { display: flex; justify-content: space-between; align-items: center; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 13px 16px; margin-bottom: 8px; }
   .invoice-left .date { font-size: 12px; color: var(--muted); }
@@ -92,7 +84,6 @@
   .invoice-status { font-size: 10px; padding: 2px 8px; border-radius: 20px; margin-top: 3px; display: inline-block; }
   .status-fulfilled { background: rgba(53,160,90,0.15); color: #5FCB84; }
   .status-pending { background: rgba(214,164,49,0.15); color: var(--gold); }
-
   .empty-note { text-align: center; color: var(--muted); font-size: 13px; padding: 30px 10px; }
   .loader { display: flex; align-items: center; justify-content: center; min-height: 60vh; color: var(--muted); font-size: 14px; }
   .error-box { text-align: center; padding: 60px 20px; }
@@ -105,63 +96,39 @@
   <div class="loader">جارِ تحميل بطاقتك…</div>
 </div>
 
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
 <script>
   const FIREBASE_PROJECT_ID = "jsm-suite";
+  firebase.initializeApp({
+    apiKey: "AIzaSyBPIC8j5z8bARY3i6FJ2-PHI4NsR213VWk",
+    authDomain: "jsm-suite.firebaseapp.com",
+    projectId: FIREBASE_PROJECT_ID,
+  });
+  const db = firebase.firestore();
 
-  // نجيب بيانات الزبون مباشرة عبر Firestore REST API — صفر مكتبات
-  // خارجية، صفر حاجة لتحميل SDK من CDN، بس نداء fetch عادي مدعوم
-  // بكل المتصفحات. هيك نتفادى تماماً أي مشكلة بترتيب تحميل السكربتات
-  // أو تعتيم أخطاء الـcross-origin يلي كانت بتصير مع مكتبة Firebase
   async function fetchCustomer(customerId) {
-    const url = `https://firestore.googleapis.com/v1/projects/${FIREBASE_PROJECT_ID}/databases/(default)/documents/customers/${customerId}`;
-    const res = await fetch(url);
-    if (res.status === 404) return null;
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const json = await res.json();
-    return parseFirestoreDoc(json.fields || {});
+    const snap = await db.collection("customers").doc(customerId).get();
+    if (!snap.exists) return null;
+    return snap.data();
   }
 
-  // Firestore REST API بترجع كل قيمة ملفوفة بنوعها (stringValue,
-  // integerValue, arrayValue...) — هالدالة بتفكّها لكائن JS عادي
-  function parseFirestoreValue(v) {
-    if (v.stringValue !== undefined) return v.stringValue;
-    if (v.integerValue !== undefined) return Number(v.integerValue);
-    if (v.doubleValue !== undefined) return Number(v.doubleValue);
-    if (v.booleanValue !== undefined) return v.booleanValue;
-    if (v.nullValue !== undefined) return null;
-    if (v.arrayValue !== undefined) return (v.arrayValue.values || []).map(parseFirestoreValue);
-    if (v.mapValue !== undefined) return parseFirestoreDoc(v.mapValue.fields || {});
-    return null;
-  }
-  function parseFirestoreDoc(fields) {
-    const out = {};
-    for (const key in fields) out[key] = parseFirestoreValue(fields[key]);
-    return out;
-  }
-
-  // نقرأ رقم الزبون من الرابط — بندعم شكلين: /c/{id} أو /customer/{id}
   const parts = window.location.pathname.split("/").filter(Boolean);
   const customerId = parts[parts.length - 1];
-
   const appEl = document.getElementById("app");
 
   function money(n) {
     return "$" + (Number(n) || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-
   function tierFor(points) {
     if (points >= 5000) return { name: "بلاتيني", cls: "tier-silver", next: null };
     if (points >= 1500) return { name: "ذهبي", cls: "tier-gold", next: 5000 };
     return { name: "فضي", cls: "tier-silver", next: 1500 };
   }
-
   function dateLabel(iso) {
     if (!iso) return "";
-    try {
-      return new Date(iso).toLocaleDateString("ar", { day: "2-digit", month: "long", year: "numeric" });
-    } catch { return iso; }
+    try { return new Date(iso).toLocaleDateString("ar", { day: "2-digit", month: "long", year: "numeric" }); } catch { return iso; }
   }
-
   function renderError(title, sub) {
     appEl.innerHTML = `
       <div class="brand-row"><span class="dot"></span><span>سوبرماركت جنوب</span></div>
@@ -170,23 +137,18 @@
         <div class="sub">${sub}</div>
       </div>`;
   }
-
   function renderCustomer(data) {
     const name = data.name || "عميل جنوب";
     const points = Number(data.points) || 0;
     const totalSpent = Number(data.totalSpent) || 0;
     const invoices = data.recentInvoices || [];
     const tier = tierFor(points);
-    const barLevel = tier.next ? Math.max(0, tier.next - 1500) : 5000;
     const barStart = tier.name === "فضي" ? 0 : (tier.name === "ذهبي" ? 1500 : 5000);
     const barEnd = tier.next || (points + 1);
     const pct = tier.next ? Math.min(100, Math.round(((points - barStart) / (barEnd - barStart)) * 100)) : 100;
-    const avgInvoice = invoices.length ? totalSpent / Math.max(invoices.length, 1) : 0;
     const barcodeBars = Array.from({ length: 38 }, () => Math.random() > 0.5 ? 2 : 1);
-
     appEl.innerHTML = `
       <div class="brand-row"><span class="dot"></span><span>سوبرماركت جنوب</span></div>
-
       <div class="card-stage">
         <div class="card" id="card">
           <div class="card-face card-front">
@@ -213,7 +175,6 @@
         </div>
       </div>
       <div class="flip-hint">اضغط على البطاقة لعرض باركود المسح</div>
-
       ${tier.next ? `
       <div class="progress-card">
         <div class="progress-top">
@@ -222,13 +183,11 @@
         </div>
         <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
       </div>` : ""}
-
       <div class="stats-row">
         <div class="stat-box"><div class="num">${money(totalSpent)}</div><div class="label">إجمالي المشتريات</div></div>
         <div class="stat-box"><div class="num">${invoices.length}</div><div class="label">آخر الفواتير</div></div>
         <div class="stat-box"><div class="num">${points.toLocaleString("en-US")}</div><div class="label">النقاط الحالية</div></div>
       </div>
-
       <div class="section-title">آخر الفواتير</div>
       <div>
         ${invoices.length === 0
@@ -249,11 +208,9 @@
           `).join("")}
       </div>
     `;
-
     const card = document.getElementById("card");
     card.addEventListener("click", () => card.classList.toggle("flipped"));
   }
-
   async function load() {
     if (!customerId) {
       renderError("رابط غير صالح", "ما في رقم عضوية بالرابط.");
@@ -271,7 +228,6 @@
       renderError("تعذّر تحميل البطاقة", "يُرجى المحاولة مرة أخرى بعد قليل.");
     }
   }
-
   load();
 </script>
 </body>
